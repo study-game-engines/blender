@@ -438,9 +438,9 @@ static VectorSet<Material *> join_materials(const Span<const Object *> objects_t
   return materials;
 }
 
-/* Face Sets IDs are a sparse sequence, so this function offsets all the IDs by face_set_offset and
+/* Face set IDs are a sparse sequence, so this function offsets all the IDs by face_set_offset and
  * updates face_set_offset with the maximum ID value. This way, when used in multiple meshes, all
- * of them will have different IDs for their Face Sets. */
+ * of them will have different IDs for their face sets. */
 static void join_face_sets(const Span<const Object *> objects_to_join,
                            const OffsetIndices<int> face_ranges,
                            Mesh &dst_mesh)
@@ -648,6 +648,11 @@ wmOperatorStatus join_objects_exec(bContext *C, wmOperator *op)
                           face_ranges,
                           corner_ranges,
                           *dst_mesh);
+
+  BKE_id_attributes_active_color_set(&dst_mesh->id,
+                                     BKE_id_attributes_active_color_name(&active_mesh->id));
+  BKE_id_attributes_default_color_set(&dst_mesh->id,
+                                      BKE_id_attributes_default_color_name(&active_mesh->id));
 
   /* Copy multires data to the out-of-main mesh. */
   if (get_multires_modifier(scene, active_object, true)) {

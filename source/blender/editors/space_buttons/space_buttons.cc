@@ -28,7 +28,7 @@
 #include "BKE_lib_remap.hh"
 #include "BKE_modifier.hh"
 #include "BKE_screen.hh"
-#include "BKE_shader_fx.h"
+#include "BKE_shader_fx.hh"
 
 #include "BLT_translation.hh"
 
@@ -190,7 +190,7 @@ void ED_buttons_visible_tabs_menu(bContext *C, uiLayout *layout, void * /*arg*/)
   }
 }
 
-void ED_buttons_navbar_menu(bContext *C, uiLayout *layout, void * /*arg*/)
+void ED_buttons_navbar_menu(bContext *C, blender::ui::Layout *layout, void * /*arg*/)
 {
   ED_screens_region_flip_menu_create(C, layout, nullptr);
   layout->operator_context_set(blender::wm::OpCallContext::InvokeDefault);

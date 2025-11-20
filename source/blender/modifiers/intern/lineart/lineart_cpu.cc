@@ -5396,6 +5396,9 @@ void MOD_lineart_gpencil_generate_v3(const LineartCache *cache,
   using blender::Vector;
 
   auto ensure_target_defgroup = [&](StringRef group_name) {
+    if (group_name.is_empty()) {
+      return -1;
+    }
     int group_index = 0;
     LISTBASE_FOREACH_INDEX (bDeformGroup *, group, &new_curves.vertex_group_names, group_index) {
       if (group_name == StringRef(group->name)) {
@@ -5444,7 +5447,9 @@ void MOD_lineart_gpencil_generate_v3(const LineartCache *cache,
 
     auto transfer_to_matching_groups = [&](const int64_t source_index, const int target_index) {
       for (const int from_group : src_to_dst_defgroup.index_range()) {
-        if (from_group < 0) {
+        if (from_group < 0 || src_to_dst_defgroup[from_group] < 0 ||
+            UNLIKELY(source_index >= src_dvert.size()))
+        {
           continue;
         }
         const MDeformWeight *mdw_from = BKE_defvert_find_index(&src_dvert[source_index],
@@ -5459,7 +5464,7 @@ void MOD_lineart_gpencil_generate_v3(const LineartCache *cache,
     auto transfer_to_singular_group = [&](const int64_t source_index, const int target_index) {
       float highest_weight = 0.0f;
       for (const int from_group : src_to_dst_defgroup.index_range()) {
-        if (from_group < 0) {
+        if (from_group < 0 || UNLIKELY(source_index >= src_dvert.size())) {
           continue;
         }
         const MDeformWeight *mdw_from = BKE_defvert_find_index(&src_dvert[source_index],

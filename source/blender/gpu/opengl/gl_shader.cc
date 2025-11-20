@@ -38,6 +38,7 @@
 
 #include <fmt/format.h>
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -74,9 +75,9 @@ GLShader::~GLShader()
 #endif
 }
 
-void GLShader::init(const shader::ShaderCreateInfo &info, bool is_batch_compilation)
+void GLShader::init(const shader::ShaderCreateInfo &info, bool is_codegen_only)
 {
-  async_compilation_ = is_batch_compilation;
+  is_codegen_only_ = is_codegen_only;
 
   /* Extract the constants names from info and store them locally. */
   for (const SpecializationConstant &constant : info.specialization_constants_) {
@@ -1258,7 +1259,7 @@ GLuint GLShader::create_shader_stage(GLenum gl_stage,
   sources[SOURCES_INDEX_VERSION] = glsl_patch_get(gl_stage);
   sources[SOURCES_INDEX_SPECIALIZATION_CONSTANTS] = constants_source;
 
-  if (async_compilation_) {
+  if (is_codegen_only_) {
     gl_sources[SOURCES_INDEX_VERSION].source = std::string(sources[SOURCES_INDEX_VERSION]);
     gl_sources[SOURCES_INDEX_SPECIALIZATION_CONSTANTS].source = std::string(
         sources[SOURCES_INDEX_SPECIALIZATION_CONSTANTS]);
@@ -1274,7 +1275,7 @@ GLuint GLShader::create_shader_stage(GLenum gl_stage,
     }
   }
 
-  if (async_compilation_) {
+  if (is_codegen_only_) {
     /* Only build the sources. */
     return 0;
   }
@@ -1289,21 +1290,7 @@ GLuint GLShader::create_shader_stage(GLenum gl_stage,
 
   std::string full_name = this->name_get() + "_" + stage_name_get(gl_stage);
 
-  if (this->name_get() == G.gpu_debug_shader_source_name) {
-    namespace fs = std::filesystem;
-    fs::path shader_dir = fs::current_path() / "Shaders";
-    fs::create_directories(shader_dir);
-    fs::path file_path = shader_dir / (full_name + ".glsl");
-
-    std::ofstream output_source_file(file_path);
-    if (output_source_file) {
-      output_source_file << concat_source;
-      output_source_file.close();
-    }
-    else {
-      std::cerr << "Shader Source Debug: Failed to open file: " << file_path << "\n";
-    }
-  }
+  dump_source_to_disk(this->name_get(), full_name, ".glsl", concat_source);
 
   /* Patch line directives so that we can make error reporting consistent. */
   size_t start_pos = 0;
@@ -1352,7 +1339,7 @@ GLuint GLShader::create_shader_stage(GLenum gl_stage,
 void GLShader::update_program_and_sources(GLSources &stage_sources,
                                           MutableSpan<StringRefNull> sources)
 {
-  const bool store_sources = has_specialization_constants() || async_compilation_;
+  const bool store_sources = has_specialization_constants() || is_codegen_only_;
   if (store_sources && stage_sources.is_empty()) {
     stage_sources = sources;
   }
@@ -1405,7 +1392,7 @@ bool GLShader::finalize(const shader::ShaderCreateInfo *info)
     geometry_shader_from_glsl(*info, sources);
   }
 
-  if (async_compilation_) {
+  if (is_codegen_only_) {
     return true;
   }
 
@@ -1427,7 +1414,7 @@ bool GLShader::post_finalize(const shader::ShaderCreateInfo *info)
   }
 
   /* Reset for specialization constants variations. */
-  async_compilation_ = false;
+  is_codegen_only_ = false;
 
   if (info != nullptr) {
     interface = new GLShaderInterface(main_program_->program_id, *info);
@@ -1669,7 +1656,7 @@ GLShader::GLProgram &GLShader::program_get(const shader::SpecializationConstants
         GL_COMPUTE_SHADER, {}, compute_sources_, *constants_state);
   }
 
-  if (async_compilation_) {
+  if (is_codegen_only_) {
     program.program_id = glCreateProgram();
     debug::object_label(GL_PROGRAM, program.program_id, name);
     return program;
@@ -1709,7 +1696,7 @@ GLSourcesBaked GLShader::get_sources()
 /** \name GLShaderCompiler
  * \{ */
 
-void GLShaderCompiler::specialize_shader(ShaderSpecialization &specialization)
+void GLShaderCompiler::specialize_shader(const ShaderSpecialization &specialization)
 {
   dynamic_cast<GLShader *>(specialization.shader)->program_get(&specialization.constants);
 }
@@ -1724,11 +1711,19 @@ void GLShaderCompiler::specialize_shader(ShaderSpecialization &specialization)
 
 GLCompilerWorker::GLCompilerWorker()
 {
-  static size_t pipe_id = 0;
-  pipe_id++;
+  using namespace std::chrono;
+  /* This function has to be thread-safe. */
+  static std::atomic<size_t> g_pipe_id = 0;
+  size_t pipe_id = g_pipe_id++;
+
+  /* Use a timestamp on top of the PID.
+   * If a Blender session crashes without unlinking its shared memory, and the PID is reused, we
+   * may run into a name collision otherwise. */
+  static size_t time_id =
+      duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
 
   std::string name = "BLENDER_SHADER_COMPILER_" + std::to_string(getpid()) + "_" +
-                     std::to_string(pipe_id);
+                     std::to_string(time_id) + "_" + std::to_string(pipe_id);
 
   shared_mem_ = std::make_unique<SharedMemory>(
       name, compilation_subprocess_shared_memory_size, true);
@@ -1934,7 +1929,7 @@ Shader *GLSubprocessShaderCompiler::compile_shader(const shader::ShaderCreateInf
   return shader;
 }
 
-void GLSubprocessShaderCompiler::specialize_shader(ShaderSpecialization &specialization)
+void GLSubprocessShaderCompiler::specialize_shader(const ShaderSpecialization &specialization)
 {
   static std::mutex mutex;
 
@@ -1964,9 +1959,9 @@ void GLSubprocessShaderCompiler::specialize_shader(ShaderSpecialization &special
     }
 
     /** WORKAROUND: Set async_compilation to true, so only the sources are generated. */
-    shader->async_compilation_ = true;
+    shader->is_codegen_only_ = true;
     shader->program_get(&specialization.constants);
-    shader->async_compilation_ = false;
+    shader->is_codegen_only_ = false;
     sources = shader->get_sources();
 
     size_t required_size = sources.size();

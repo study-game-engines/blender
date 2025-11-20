@@ -208,7 +208,7 @@ void render_new_render_data(Main *bmain,
                             int rectx,
                             int recty,
                             eSpaceSeq_Proxy_RenderSize preview_render_size,
-                            int for_render,
+                            Render *render,
                             RenderData *r_context)
 {
   r_context->bmain = bmain;
@@ -218,7 +218,7 @@ void render_new_render_data(Main *bmain,
   r_context->recty = recty;
   r_context->preview_render_size = preview_render_size;
   r_context->ignore_missing_media = false;
-  r_context->for_render = for_render;
+  r_context->render = render;
   r_context->motion_blur_samples = 0;
   r_context->motion_blur_shutter = 0;
   r_context->skip_cache = false;
@@ -802,6 +802,8 @@ static ImBuf *seq_render_effect_strip_impl(const RenderData *context,
             target_frame = std::floor(target_frame);
           }
 
+          intra_frame_cache_set_cur_frame(
+              context->scene, target_frame, context->view_id, context->rectx, context->recty);
           ibuf[i] = seq_render_strip(context, state, input[0], target_frame);
         }
         else { /* Other effects. */
@@ -1437,7 +1439,7 @@ static ImBuf *seq_render_scene_strip_ex(const RenderData *context,
   }
 
   const bool is_rendering = G.is_rendering;
-  const bool is_preview = !context->for_render && (context->scene->r.seq_prev_type) != OB_RENDER;
+  const bool is_preview = !context->render && (context->scene->r.seq_prev_type) != OB_RENDER;
   const bool use_gpencil = (strip->flag & SEQ_SCENE_NO_ANNOTATION) == 0;
   double frame = double(scene->r.sfra) + double(frame_index) + double(strip->anim_startofs);
 
@@ -1484,7 +1486,7 @@ static ImBuf *seq_render_scene_strip_ex(const RenderData *context,
     /* for old scene this can be uninitialized,
      * should probably be added to do_versions at some point if the functionality stays */
     if (context->scene->r.seq_prev_type == 0) {
-      context->scene->r.seq_prev_type = 3 /* == OB_SOLID */;
+      context->scene->r.seq_prev_type = OB_SOLID;
     }
 
     /* opengl offscreen render */
@@ -1538,6 +1540,8 @@ static ImBuf *seq_render_scene_strip_ex(const RenderData *context,
 
     const float subframe = frame - floorf(frame);
 
+    RE_display_share(re, context->render);
+
     RE_RenderFrame(re,
                    context->bmain,
                    scene,
@@ -1546,6 +1550,8 @@ static ImBuf *seq_render_scene_strip_ex(const RenderData *context,
                    floorf(frame),
                    subframe,
                    false);
+
+    RE_display_free(re);
 
     /* restore previous state after it was toggled on & off by RE_RenderFrame */
     G.is_rendering = is_rendering;

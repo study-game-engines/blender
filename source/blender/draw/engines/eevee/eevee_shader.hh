@@ -99,6 +99,7 @@ enum eShaderType {
   LIGHTPROBE_IRRADIANCE_LOAD,
   LIGHTPROBE_IRRADIANCE_WORLD,
 
+  LOOKDEV_COPY_WORLD,
   LOOKDEV_DISPLAY,
 
   MOTION_BLUR_GATHER,
@@ -242,7 +243,7 @@ class ShaderModule {
     }
   };
 
-  Map<SpecializationsKey, SpecializationBatchHandle> specialization_handles_;
+  Map<SpecializationsKey, Vector<AsyncSpecializationHandle>> specialization_handles_;
 
   static gpu::StaticShaderCache<ShaderModule> &get_static_cache()
   {

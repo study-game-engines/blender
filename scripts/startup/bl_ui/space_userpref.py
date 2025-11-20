@@ -2134,9 +2134,12 @@ class USERPREF_PT_ndof_settings(Panel):
         col.row().prop(props, "ndof_navigation_mode", text="Navigation Mode")
 
         if show_3dview_settings:
-            col.prop(props, "ndof_lock_horizon", text="Lock Horizon")
             colsub = col.column()
-            colsub.active = props.ndof_navigation_mode == 'FLY'
+            colsub.active = props.ndof_navigation_mode in {'FLY', 'OBJECT'}
+            colsub.prop(props, "ndof_lock_horizon", text="Lock Horizon")
+            del colsub
+            colsub = col.column()
+            colsub.active = props.ndof_navigation_mode in {'FLY', 'DRONE'}
             colsub.prop(props, "ndof_fly_speed_auto", text="Auto Fly Speed")
             del colsub
             layout.separator()
@@ -2898,6 +2901,7 @@ class USERPREF_PT_developer_tools(Panel):
                 ({"property": "use_viewport_debug"}, None),
                 ({"property": "use_eevee_debug"}, None),
                 ({"property": "use_extensions_debug"}, ("/blender/blender/issues/119521", "#119521")),
+                ({"property": "write_legacy_blend_file_format"}, ("/blender/blender/issues/129309", "#129309")),
                 ({"property": "no_data_block_packing"}, ("/blender/blender/issues/132167", "#132167")),
             ),
         )
@@ -2958,7 +2962,6 @@ class USERPREF_PT_experimental_prototypes(ExperimentalPanel, Panel):
             (
                 ({"property": "use_new_curves_tools"}, ("blender/blender/issues/68981", "#68981")),
                 ({"property": "use_sculpt_texture_paint"}, ("blender/blender/issues/96225", "#96225")),
-                ({"property": "write_legacy_blend_file_format"}, ("/blender/blender/issues/129309", "#129309")),
             ),
         )
 

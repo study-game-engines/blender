@@ -29,6 +29,7 @@
 
 #include "BKE_context.hh"
 #include "BKE_global.hh"
+#include "BKE_lib_id.hh"
 #include "BKE_main.hh"
 #include "BKE_report.hh"
 #include "BKE_scene.hh"
@@ -64,14 +65,9 @@
 #include "UI_interface_layout.hh"
 #include "UI_view2d.hh"
 
-#ifdef WITH_AUDASPACE
-#  include <AUD_Sequence.h>
-#endif
-
 #include "DEG_depsgraph.hh"
 #include "DEG_depsgraph_build.hh"
 
-/* Own include. */
 #include "sequencer_intern.hh"
 
 namespace blender::ed::vse {
@@ -107,7 +103,7 @@ static void sequencer_add_init(bContext * /*C*/, wmOperator *op)
 static void sequencer_add_free(bContext * /*C*/, wmOperator *op)
 {
   if (op->customdata) {
-    SequencerAddData *sad = reinterpret_cast<SequencerAddData *>(op->customdata);
+    SequencerAddData *sad = static_cast<SequencerAddData *>(op->customdata);
     MEM_delete(sad);
     op->customdata = nullptr;
   }
@@ -345,7 +341,7 @@ static void sequencer_file_drop_channel_frame_set(bContext *C,
 
 static bool op_invoked_by_drop_event(const wmOperator *op)
 {
-  SequencerAddData *sad = reinterpret_cast<SequencerAddData *>(op->customdata);
+  SequencerAddData *sad = static_cast<SequencerAddData *>(op->customdata);
   if (sad == nullptr) {
     return false;
   }
@@ -367,7 +363,7 @@ static void sequencer_generic_invoke_xy__internal(
 
   int timeline_frame = scene->r.cfra;
   if (event && (flag & SEQPROP_NOPATHS)) {
-    SequencerAddData *sad = reinterpret_cast<SequencerAddData *>(op->customdata);
+    SequencerAddData *sad = static_cast<SequencerAddData *>(op->customdata);
     sad->is_drop_event = true;
     sequencer_file_drop_channel_frame_set(C, op, event);
   }
@@ -500,7 +496,7 @@ static bool load_data_init_from_operator(seq::LoadData *load_data, bContext *C, 
       RNA_property_boolean_get(op->ptr, prop))
   {
     if (op->customdata) {
-      SequencerAddData *sad = reinterpret_cast<SequencerAddData *>(op->customdata);
+      SequencerAddData *sad = static_cast<SequencerAddData *>(op->customdata);
       ImageFormatData *imf = &sad->im_format;
 
       load_data->use_multiview = true;
@@ -678,7 +674,7 @@ void SEQUENCER_OT_scene_strip_add(wmOperatorType *ot)
   /* Identifiers. */
   ot->name = "Add Scene Strip";
   ot->idname = "SEQUENCER_OT_scene_strip_add";
-  ot->description = "Add a strip to the sequencer using a Blender scene as a source";
+  ot->description = "Add a strip re-using this scene as the source";
 
   /* API callbacks. */
   ot->invoke = sequencer_add_scene_strip_invoke;
@@ -772,7 +768,7 @@ void SEQUENCER_OT_scene_strip_add_new(wmOperatorType *ot)
   /* Identifiers. */
   ot->name = "Add Strip with a new Scene";
   ot->idname = "SEQUENCER_OT_scene_strip_add_new";
-  ot->description = "Create a new Strip and assign a new Scene as source";
+  ot->description = "Add a strip using a new scene as the source";
 
   /* API callbacks. */
   ot->invoke = sequencer_add_scene_strip_new_invoke;
@@ -807,7 +803,12 @@ static Scene *sequencer_add_scene_asset(const bContext &C,
 
   if (asset.is_local_id()) {
     /* Local scene that needs to be duplicated. */
-    Scene *scene_copy = BKE_scene_duplicate(&bmain, scene_asset, SCE_COPY_FULL);
+    Scene *scene_copy = BKE_scene_duplicate(
+        &bmain,
+        scene_asset,
+        SCE_COPY_FULL,
+        static_cast<eDupli_ID_Flags>(U.dupflag | USER_DUP_OBJECT),
+        LIB_ID_DUPLICATE_IS_ROOT_ID);
     return scene_copy;
   }
   return scene_asset;
@@ -883,7 +884,7 @@ static std::string sequencer_add_scene_asset_get_description(bContext *C,
 void SEQUENCER_OT_add_scene_strip_from_scene_asset(wmOperatorType *ot)
 {
   ot->name = "Add Scene Asset";
-  ot->description = "Add a scene strip from a scene asset";
+  ot->description = "Add a strip using a duplicate of this scene asset as the source";
   ot->idname = "SEQUENCER_OT_add_scene_strip_from_scene_asset";
 
   ot->invoke = sequencer_add_scene_asset_invoke;
@@ -1406,7 +1407,7 @@ static bool sequencer_add_draw_check_fn(PointerRNA *ptr, PropertyRNA *prop, void
 static void sequencer_add_draw(bContext * /*C*/, wmOperator *op)
 {
   uiLayout *layout = op->layout;
-  SequencerAddData *sad = reinterpret_cast<SequencerAddData *>(op->customdata);
+  SequencerAddData *sad = static_cast<SequencerAddData *>(op->customdata);
   ImageFormatData *imf = &sad->im_format;
 
   bool is_redo_panel = sad == nullptr;
@@ -1754,7 +1755,8 @@ static wmOperatorStatus sequencer_add_image_strip_exec(bContext *C, wmOperator *
     return OPERATOR_CANCELLED;
   }
 
-  ListBase ranges = ED_image_filesel_detect_sequences(BKE_main_blendfile_path(bmain), op, false);
+  const char *blendfile_path = BKE_main_blendfile_path(bmain);
+  ListBase ranges = ED_image_filesel_detect_sequences(blendfile_path, blendfile_path, op, false);
   if (BLI_listbase_is_empty(&ranges)) {
     sequencer_add_free(C, op);
     return OPERATOR_CANCELLED;

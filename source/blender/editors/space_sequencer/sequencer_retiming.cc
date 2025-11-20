@@ -35,7 +35,6 @@
 
 #include "UI_view2d.hh"
 
-/* Own include. */
 #include "sequencer_intern.hh"
 
 namespace blender::ed::vse {
@@ -682,6 +681,7 @@ static wmOperatorStatus strip_speed_set_exec(bContext *C, const wmOperator *op)
     if (key == nullptr) {
       continue;
     }
+
     /* TODO: it would be nice to multiply speed with complex retiming by a factor. */
     seq::retiming_key_speed_set(
         scene, strip, key, RNA_float_get(op->ptr, "speed") / 100.0f, false);

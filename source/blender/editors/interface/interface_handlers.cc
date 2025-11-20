@@ -1312,18 +1312,20 @@ static void ui_apply_but_TEX(bContext *C, uiBut *but, uiHandleButtonData *data)
   ui_but_string_set(C, but, data->text_edit.edit_string);
   ui_but_update_edited(but);
 
-  /* give butfunc a copy of the original text too.
-   * feature used for bone renaming, channels, etc.
-   * afterfunc frees rename_orig */
-  if (data->text_edit.original_string && (but->flag & UI_BUT_TEXTEDIT_UPDATE)) {
-    /* In this case, we need to keep `original_string` available,
-     * to restore real org string in case we cancel after having typed something already. */
-    but->rename_orig = BLI_strdup(data->text_edit.original_string);
-  }
   /* only if there are afterfuncs, otherwise 'renam_orig' isn't freed */
-  else if (ui_afterfunc_check(but->block, but)) {
-    but->rename_orig = data->text_edit.original_string;
-    data->text_edit.original_string = nullptr;
+  if (ui_afterfunc_check(but->block, but)) {
+    /* give butfunc a copy of the original text too.
+     * feature used for bone renaming, channels, etc.
+     * afterfunc frees rename_orig */
+    if (data->text_edit.original_string && (but->flag & UI_BUT_TEXTEDIT_UPDATE)) {
+      /* In this case, we need to keep `original_string` available,
+       * to restore real org string in case we cancel after having typed something already. */
+      but->rename_orig = BLI_strdup(data->text_edit.original_string);
+    }
+    else {
+      but->rename_orig = data->text_edit.original_string;
+      data->text_edit.original_string = nullptr;
+    }
   }
 
   void *orig_arg2 = but->func_arg2;
@@ -3679,8 +3681,12 @@ static bool ui_textedit_copypaste(uiBut *but, uiTextEdit &text_edit, const int m
 
 #ifdef WITH_INPUT_IME
 /* Enable IME, and setup #uiBut IME data. */
-static void ui_textedit_ime_begin(wmWindow *win, uiBut * /*but*/)
+static void ui_textedit_ime_begin(wmWindow *win, uiBut *but)
 {
+  if (ELEM(but->type, ButType::Num, ButType::NumSlider)) {
+    return;
+  }
+
   /* XXX Is this really needed? */
   int x, y;
 
@@ -3695,13 +3701,19 @@ static void ui_textedit_ime_begin(wmWindow *win, uiBut * /*but*/)
 }
 
 /* Disable IME, and clear #uiBut IME data. */
-static void ui_textedit_ime_end(wmWindow *win, uiBut * /*but*/)
+static void ui_textedit_ime_end(wmWindow *win, uiBut *but)
 {
+  if (ELEM(but->type, ButType::Num, ButType::NumSlider)) {
+    return;
+  }
   wm_window_IME_end(win);
 }
 
 void ui_but_ime_reposition(uiBut *but, int x, int y, bool complete)
 {
+  if (ELEM(but->type, ButType::Num, ButType::NumSlider)) {
+    return;
+  }
   BLI_assert(but->active || but->semi_modal_state);
   uiHandleButtonData *data = but->semi_modal_state ? but->semi_modal_state : but->active;
 
@@ -4137,6 +4149,12 @@ static int ui_do_but_textedit(
           if (data->searchbox) {
             data->cancel = data->escapecancel = true;
           }
+#ifdef WITH_INPUT_IME
+          else if (is_ime_composing && ime_data->composite.size() && but->type == ButType::Text) {
+            ui_textedit_insert_buf(
+                but, text_edit, ime_data->composite.c_str(), ime_data->composite.size());
+          }
+#endif
           button_activate_state(C, but, BUTTON_STATE_EXIT);
           retval = WM_UI_HANDLER_BREAK;
         }
@@ -5223,8 +5241,17 @@ static int ui_do_but_TEX(
       }
     }
     else if (ELEM(event->type, WHEELUPMOUSE, WHEELDOWNMOUSE) && (event->modifier & KM_CTRL)) {
-      const int inc_value = (event->type == WHEELUPMOUSE) ? 1 : -1;
-      return ui_do_but_text_value_cycle(C, but, data, inc_value);
+      if ((but->type == ButType::SearchMenu) && but->func_argN &&
+          (static_cast<uiButSearch *>(but)->arg == but->func_argN))
+      {
+        /* Disable value cycling for search buttons with an allocated search data argument. This
+         * causes issues because the search data is moved to the "afterfuncs", but search updating
+         * requires it again. See #147539. */
+      }
+      else {
+        const int inc_value = (event->type == WHEELUPMOUSE) ? 1 : -1;
+        return ui_do_but_text_value_cycle(C, but, data, inc_value);
+      }
     }
   }
   else if (data->state == BUTTON_STATE_TEXT_EDITING) {
@@ -5880,17 +5907,20 @@ static void ui_numedit_set_active(uiBut *but)
     }
   }
 
-  /* Don't change the cursor once pressed. */
-  if ((but->flag & UI_SELECT) == 0) {
+  /* Don't change the cursor once pressed or if a modal operator is running.
+   * If a modal operator is running, the number edit input will be ignored,
+   * so do not try to change the cursor if this is the case.
+   */
+  if ((but->flag & UI_SELECT) == 0 && WM_cursor_modal_is_set_ok(data->window)) {
     if ((but->drawflag & UI_BUT_HOVER_LEFT) || (but->drawflag & UI_BUT_HOVER_RIGHT)) {
       if (data->changed_cursor) {
-        WM_cursor_modal_restore(data->window);
+        WM_cursor_set(data->window, WM_CURSOR_DEFAULT);
         data->changed_cursor = false;
       }
     }
     else {
       if (data->changed_cursor == false) {
-        WM_cursor_modal_set(data->window, WM_CURSOR_X_MOVE);
+        WM_cursor_set(data->window, WM_CURSOR_X_MOVE);
         data->changed_cursor = true;
       }
     }
@@ -9375,7 +9405,7 @@ static void button_activate_exit(
 #endif
 
   if (data->changed_cursor) {
-    WM_cursor_modal_restore(win);
+    WM_cursor_set(win, WM_CURSOR_DEFAULT);
   }
 
   /* redraw and refresh (for popups) */

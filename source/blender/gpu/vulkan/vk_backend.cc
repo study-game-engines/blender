@@ -54,13 +54,10 @@ bool GPU_vulkan_is_supported_driver(VkPhysicalDevice vk_physical_device)
   vk_physical_device_driver_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES;
   vk_physical_device_properties.pNext = &vk_physical_device_driver_properties;
   vkGetPhysicalDeviceProperties2(vk_physical_device, &vk_physical_device_properties);
-  uint32_t conformance_version = VK_MAKE_API_VERSION(
-      vk_physical_device_driver_properties.conformanceVersion.major,
-      vk_physical_device_driver_properties.conformanceVersion.minor,
-      vk_physical_device_driver_properties.conformanceVersion.subminor,
-      vk_physical_device_driver_properties.conformanceVersion.patch);
 
-  /* Intel IRIS on 10th gen CPU (and older) crashes due to multiple driver issues.
+#ifdef _WIN32
+  /* Intel IRIS on 10th gen CPU (and older) crashes with drivers before 101.2140 due to multiple
+   * driver issues.
    *
    * 1) Workbench is working, but EEVEE pipelines are failing. Calling vkCreateGraphicsPipelines
    * for certain EEVEE shaders (Shadow, Deferred rendering) would return with VK_SUCCESS, but
@@ -72,11 +69,16 @@ bool GPU_vulkan_is_supported_driver(VkPhysicalDevice vk_physical_device)
    */
   if (vk_physical_device_driver_properties.driverID == VK_DRIVER_ID_INTEL_PROPRIETARY_WINDOWS &&
       vk_physical_device_properties.properties.deviceType ==
-          VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU &&
-      conformance_version < VK_MAKE_API_VERSION(1, 3, 2, 0))
+          VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)
   {
-    return false;
+    const uint32_t driver_version = vk_physical_device_properties.properties.driverVersion;
+    uint32_t driver_version_major = driver_version >> 14u;
+    uint32_t driver_version_minor = driver_version & 0x3fffu;
+    if (driver_version_major < 101 || driver_version_major == 101 && driver_version_minor < 2140) {
+      return false;
+    }
   }
+#endif
 
 #ifndef _WIN32
   /* NVIDIA drivers below 550 don't work on Linux. When sending command to the GPU there is not
@@ -84,6 +86,11 @@ bool GPU_vulkan_is_supported_driver(VkPhysicalDevice vk_physical_device)
    * but there is no mention of a solution. This means that on Linux we can only support GTX900 and
    * or use MesaNVK.
    */
+  uint32_t conformance_version = VK_MAKE_API_VERSION(
+      vk_physical_device_driver_properties.conformanceVersion.major,
+      vk_physical_device_driver_properties.conformanceVersion.minor,
+      vk_physical_device_driver_properties.conformanceVersion.subminor,
+      vk_physical_device_driver_properties.conformanceVersion.patch);
   if (vk_physical_device_driver_properties.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY &&
       conformance_version < VK_MAKE_API_VERSION(1, 3, 7, 2))
   {
@@ -140,13 +147,26 @@ static Vector<StringRefNull> missing_capabilities_get(VkPhysicalDevice vk_physic
   vkGetPhysicalDeviceFeatures2(vk_physical_device, &features);
 
 #ifndef __APPLE__
+  /* Features currently not supported by Mesa KosmicKrisp. */
   if (features.features.geometryShader == VK_FALSE) {
     missing_capabilities.append("geometry shaders");
   }
+  if (features.features.multiViewport == VK_FALSE) {
+    missing_capabilities.append("multi viewport");
+  }
+  if (features.features.shaderClipDistance == VK_FALSE) {
+    missing_capabilities.append("shader clip distance");
+  }
+  if (features.features.fragmentStoresAndAtomics == VK_FALSE) {
+    missing_capabilities.append("fragment stores and atomics");
+  }
+  if (features.features.vertexPipelineStoresAndAtomics == VK_FALSE) {
+    missing_capabilities.append("vertex pipeline stores and atomics");
+  }
+#endif
   if (features.features.logicOp == VK_FALSE) {
     missing_capabilities.append("logical operations");
   }
-#endif
   if (features.features.dualSrcBlend == VK_FALSE) {
     missing_capabilities.append("dual source blending");
   }
@@ -156,17 +176,8 @@ static Vector<StringRefNull> missing_capabilities_get(VkPhysicalDevice vk_physic
   if (features.features.multiDrawIndirect == VK_FALSE) {
     missing_capabilities.append("multi draw indirect");
   }
-  if (features.features.multiViewport == VK_FALSE) {
-    missing_capabilities.append("multi viewport");
-  }
-  if (features.features.shaderClipDistance == VK_FALSE) {
-    missing_capabilities.append("shader clip distance");
-  }
   if (features.features.drawIndirectFirstInstance == VK_FALSE) {
     missing_capabilities.append("draw indirect first instance");
-  }
-  if (features.features.fragmentStoresAndAtomics == VK_FALSE) {
-    missing_capabilities.append("fragment stores and atomics");
   }
   if (features_11.shaderDrawParameters == VK_FALSE) {
     missing_capabilities.append("shader draw parameters");
@@ -557,6 +568,7 @@ Context *VKBackend::context_alloc(void *ghost_window, void *ghost_context)
   if (!device.is_initialized()) {
     device.init(ghost_context);
     device.extensions_get().log();
+    device.workarounds_get().log();
     init_device_list((GHOST_ContextHandle)ghost_context);
   }
 

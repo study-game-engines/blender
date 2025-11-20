@@ -997,14 +997,7 @@ void MTLContext::pipeline_state_init()
   /* Depth State. */
   this->pipeline_state.depth_stencil_state.depth_write_enable = false;
   this->pipeline_state.depth_stencil_state.depth_test_enabled = false;
-  this->pipeline_state.depth_stencil_state.depth_range_near = 0.0;
-  this->pipeline_state.depth_stencil_state.depth_range_far = 1.0;
   this->pipeline_state.depth_stencil_state.depth_function = MTLCompareFunctionAlways;
-  this->pipeline_state.depth_stencil_state.depth_bias = 0.0;
-  this->pipeline_state.depth_stencil_state.depth_slope_scale = 0.0;
-  this->pipeline_state.depth_stencil_state.depth_bias_enabled_for_points = false;
-  this->pipeline_state.depth_stencil_state.depth_bias_enabled_for_lines = false;
-  this->pipeline_state.depth_stencil_state.depth_bias_enabled_for_tris = false;
 
   /* Stencil State. */
   this->pipeline_state.depth_stencil_state.stencil_test_enabled = false;
@@ -1240,8 +1233,8 @@ bool MTLContext::ensure_render_pipeline_state(MTLPrimitiveType mtl_prim_type)
       viewport.originY = (double)this->pipeline_state.viewport_offset_y[v];
       viewport.width = (double)this->pipeline_state.viewport_width[v];
       viewport.height = (double)this->pipeline_state.viewport_height[v];
-      viewport.znear = this->pipeline_state.depth_stencil_state.depth_range_near;
-      viewport.zfar = this->pipeline_state.depth_stencil_state.depth_range_far;
+      viewport.znear = 0.0f;
+      viewport.zfar = 1.0f;
     }
     [rec setViewports:viewports count:this->pipeline_state.num_active_viewports];
   }
@@ -1252,8 +1245,8 @@ bool MTLContext::ensure_render_pipeline_state(MTLPrimitiveType mtl_prim_type)
     viewport.originY = (double)this->pipeline_state.viewport_offset_y[0];
     viewport.width = (double)this->pipeline_state.viewport_width[0];
     viewport.height = (double)this->pipeline_state.viewport_height[0];
-    viewport.znear = this->pipeline_state.depth_stencil_state.depth_range_near;
-    viewport.zfar = this->pipeline_state.depth_stencil_state.depth_range_far;
+    viewport.znear = 0.0f;
+    viewport.zfar = 1.0f;
     [rec setViewport:viewport];
   }
 
@@ -1463,23 +1456,7 @@ void MTLContext::ensure_depth_stencil_state(MTLPrimitiveType prim_type)
     }
 
     if (hasDepthTarget) {
-      bool doBias = false;
-      switch (prim_type) {
-        case MTLPrimitiveTypeTriangle:
-        case MTLPrimitiveTypeTriangleStrip:
-          doBias = this->pipeline_state.depth_stencil_state.depth_bias_enabled_for_tris;
-          break;
-        case MTLPrimitiveTypeLine:
-        case MTLPrimitiveTypeLineStrip:
-          doBias = this->pipeline_state.depth_stencil_state.depth_bias_enabled_for_lines;
-          break;
-        case MTLPrimitiveTypePoint:
-          doBias = this->pipeline_state.depth_stencil_state.depth_bias_enabled_for_points;
-          break;
-      }
-      [rec setDepthBias:(doBias) ? this->pipeline_state.depth_stencil_state.depth_bias : 0
-             slopeScale:(doBias) ? this->pipeline_state.depth_stencil_state.depth_slope_scale : 0
-                  clamp:0];
+      [rec setDepthBias:0 slopeScale:0 clamp:0];
     }
   }
 }

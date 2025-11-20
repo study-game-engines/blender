@@ -50,12 +50,6 @@ float2 calc_barycentric_co(int vertid)
 #define float4_from_float2(v) float4(v.xy, 0.0f, 1.0f)
 #define float4_from_float(v) float4(float3(v), 1.0f)
 
-/* TODO: Move to shader_shared. */
-#define RAY_TYPE_CAMERA 0
-#define RAY_TYPE_SHADOW 1
-#define RAY_TYPE_DIFFUSE 2
-#define RAY_TYPE_GLOSSY 3
-
 #ifdef GPU_FRAGMENT_SHADER
 #  define FrontFacing gl_FrontFacing
 #else
@@ -287,7 +281,7 @@ float3 dF_impl(float3 v)
 
 #  define dF_branch(fn, filter_width, result) \
     if (true) { \
-      g_derivative_filter_width = filter_width; \
+      g_derivative_filter_width = filter_width * derivative_scale_get(); \
       g_derivative_flag = 1; \
       result.x = (fn); \
       g_derivative_flag = -1; \
@@ -299,7 +293,7 @@ float3 dF_impl(float3 v)
 /* Used when the non-offset value is already computed elsewhere */
 #  define dF_branch_incomplete(fn, filter_width, result) \
     if (true) { \
-      g_derivative_filter_width = filter_width; \
+      g_derivative_filter_width = filter_width * derivative_scale_get(); \
       g_derivative_flag = 1; \
       result.x = (fn); \
       g_derivative_flag = -1; \

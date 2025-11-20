@@ -455,6 +455,16 @@ static void blit_aspect(VKContext &context,
       dst_offset_y + src_texture.height_get(), 0, dst_texture.height_get());
   region.dstOffsets[1].z = 1;
 
+  /* Early exit when no pixels needs to be blitted. This should never occur, but has happened
+   * during development as retina displays are not yet detected and the intermediate backbuffer
+   * would be to small, resulting in cropping the full blit source image. */
+  if (region.dstOffsets[0].x == region.dstOffsets[1].x ||
+      region.dstOffsets[0].y == region.dstOffsets[1].y ||
+      region.dstOffsets[0].z == region.dstOffsets[1].z)
+  {
+    return;
+  }
+
   context.render_graph().add_node(blit_image);
 }
 
@@ -657,7 +667,9 @@ void VKFrameBuffer::rendering_ensure_dynamic_rendering(VKContext &context,
             VK_FORMAT_UNDEFINED :
             vk_format);
   }
-  color_attachment_size = uint32_t(max_filled_slot_index + 1);
+  uint32_t color_attachment_size = uint32_t(max_filled_slot_index + 1);
+  color_attachment_formats_.resize(color_attachment_size);
+
   begin_rendering.node_data.vk_rendering_info.colorAttachmentCount = color_attachment_size;
   begin_rendering.node_data.vk_rendering_info.pColorAttachments =
       begin_rendering.node_data.color_attachments;
@@ -764,7 +776,7 @@ VkFormat VKFrameBuffer::stencil_attachment_format_get() const
 };
 Span<VkFormat> VKFrameBuffer::color_attachment_formats_get() const
 {
-  return color_attachment_formats_;
+  return color_attachment_formats_.as_span();
 }
 
 void VKFrameBuffer::rendering_end(VKContext &context)

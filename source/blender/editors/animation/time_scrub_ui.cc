@@ -93,7 +93,7 @@ static void draw_current_frame(const Scene *scene,
   const float box_min_width = 24.0f * UI_SCALE_FAC;
   const float box_width = std::max(text_width + (2.0f * text_padding), box_min_width);
   const float box_margin = 2.0f * UI_SCALE_FAC;
-  const float shadow_width = UI_SCALE_FAC;
+  float shadow_width = UI_SCALE_FAC;
   const float tri_top = ceil(scrub_region_rect->ymin + box_margin);
   const float tri_half_width = 6.0f * UI_SCALE_FAC;
   const float tri_height = 6.0f * UI_SCALE_FAC;
@@ -123,8 +123,15 @@ static void draw_current_frame(const Scene *scene,
     immUnbindProgram();
 
     /* Vertical line. */
-    rect.xmin = floor(subframe_x - U.pixelsize) - shadow_width;
-    rect.xmax = floor(subframe_x + U.pixelsize + 1.0f) + shadow_width;
+    if (UI_SCALE_FAC < 0.91f) {
+      shadow_width = 1.0f;
+      rect.xmin = floor(subframe_x) - shadow_width;
+      rect.xmax = rect.xmin + U.pixelsize + shadow_width + shadow_width;
+    }
+    else {
+      rect.xmin = floor(subframe_x - U.pixelsize) - shadow_width;
+      rect.xmax = floor(subframe_x + U.pixelsize + 1.0f) + shadow_width;
+    }
     rect.ymin = 0.0f;
     rect.ymax = ceil(scrub_region_rect->ymax - box_margin + shadow_width);
     UI_draw_roundbox_4fv_ex(&rect, fg_color, nullptr, 1.0f, bg_color, shadow_width, 0.0f);
@@ -256,15 +263,15 @@ void ED_time_scrub_channel_search_draw(const bContext *C, ARegion *region, bDope
   const float padding_y = UI_SCALE_FAC;
 
   uiBlock *block = UI_block_begin(C, region, __func__, blender::ui::EmbossType::Emboss);
-  uiLayout &layout = blender::ui::block_layout(block,
-                                               blender::ui::LayoutDirection::Vertical,
-                                               blender::ui::LayoutType::Header,
-                                               rect.xmin + padding_x,
-                                               rect.ymin + UI_UNIT_Y + padding_y,
-                                               BLI_rcti_size_x(&rect) - 2 * padding_x,
-                                               1,
-                                               0,
-                                               style);
+  blender::ui::Layout &layout = blender::ui::block_layout(block,
+                                                          blender::ui::LayoutDirection::Vertical,
+                                                          blender::ui::LayoutType::Header,
+                                                          rect.xmin + padding_x,
+                                                          rect.ymin + UI_UNIT_Y + padding_y,
+                                                          BLI_rcti_size_x(&rect) - 2 * padding_x,
+                                                          1,
+                                                          0,
+                                                          style);
   layout.scale_y_set((UI_UNIT_Y - padding_y) / UI_UNIT_Y);
   blender::ui::block_layout_set_current(block, &layout);
   UI_block_align_begin(block);

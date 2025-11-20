@@ -343,7 +343,7 @@ static void init_sculpt_mode_session(Main &bmain, Depsgraph &depsgraph, Scene &s
   Mesh &mesh = *static_cast<Mesh *>(ob.data);
   if (mesh.attributes().contains(".sculpt_face_set")) {
     /* Here we can detect geometry that was just added to Sculpt Mode as it has the
-     * SCULPT_FACE_SET_NONE assigned, so we can create a new Face Set for it. */
+     * SCULPT_FACE_SET_NONE assigned, so we can create a new face set for it. */
     /* In sculpt mode all geometry that is assigned to SCULPT_FACE_SET_NONE is considered as not
      * initialized, which is used is some operators that modify the mesh topology to perform
      * certain actions in the new faces. After these operations are finished, all faces should have
@@ -430,14 +430,8 @@ void object_sculpt_mode_enter(Main &bmain,
       if (flag == 0) {
         /* pass */
       }
-      else if (flag & dyntopo::VDATA) {
-        message_unsupported = RPT_("vertex data");
-      }
-      else if (flag & dyntopo::EDATA) {
-        message_unsupported = RPT_("edge data");
-      }
-      else if (flag & dyntopo::LDATA) {
-        message_unsupported = RPT_("face data");
+      else if (flag & dyntopo::ATTRIBUTES) {
+        message_unsupported = RPT_("attributes");
       }
       else if (flag & dyntopo::MODIFIER) {
         message_unsupported = RPT_("constructive modifier");
